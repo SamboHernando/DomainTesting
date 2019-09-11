@@ -31,7 +31,6 @@ namespace DomainTesting
             var path = "C:\\temp\\WM5145-BR_ResellerTextFile_0823201938424.csv";
             DataTable dt = ImportCSV(path);
 
-
             List<Task<Domain>> results = new List<Task<Domain>>();
             var count = 0;
             double i = 0;
