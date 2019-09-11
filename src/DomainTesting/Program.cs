@@ -23,13 +23,16 @@ namespace DomainTesting
             var sw = new Stopwatch();
             sw.Start();
 
-            client = new HttpClient();
+            client = new HttpClient()
+            {
+                Timeout = new TimeSpan(0,0,15)
+            };
 
             var path = "C:\\temp\\WM5145-BR_ResellerTextFile_0823201938424.csv";
             DataTable dt = ImportCSV(path);
 
 
-            List<Task<HttpResponseMessage>> results = new List<Task<HttpResponseMessage>>();
+            List<Task<Domain>> results = new List<Task<Domain>>();
             var count = 0;
             double i = 0;
 
@@ -42,17 +45,43 @@ namespace DomainTesting
                     count++;
                     i = Math.Round(((double)count / results.Count * 100), 2);
 
+                    Console.Clear();
                     Console.WriteLine($"{i}% Complete | Status: {result.RequestMessage.RequestUri}");
                 };
 
                 foreach (DataRow row in dt.Rows)
                 {
-                    var domainName = row["DomainName"] as string;
-                    results.Add(GetDomainAsync(domainName, progress));
+                    try
+                    {
+                        var domainName = (string)row["DomainName"];
+                        DateTime creationDate = new DateTime();
+
+                        if(DateTime.TryParse((string)row["CreationDate"], out creationDate))
+                        {}
+                        else
+                        {
+                            creationDate = DateTime.Now;
+                        }
+
+                        var experationDate = DateTime.Parse((string)row["ExpDate"]);
+
+                        var domain = new Domain(domainName, creationDate, experationDate);
+                        results.Add(GetDomainAsync(domain, progress));
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine(ex.Message);
+                    }
                 }
 
-                var data = await Task.WhenAll(results);
-
+                var data = new List<Domain>(await Task.WhenAll(results));
+                var sb = new StringBuilder();
+                sb.AppendLine("DomainName, CreationDate, ExperationDate, OwnedTimespan(Days), Response");
+                foreach (var item in data)
+                {
+                    sb.AppendLine(item.ToString());
+                }
+                File.WriteAllText("C:\\temp\\test.csv", sb.ToString()); 
             }
             catch (Exception ex)
             {
@@ -119,16 +148,17 @@ namespace DomainTesting
 
             return dt;
         }
-        public static async Task<HttpResponseMessage> GetDomainAsync(string domainName, IProgress<HttpResponseMessage> progress)
+        public static async Task<Domain> GetDomainAsync(Domain domain, IProgress<HttpResponseMessage> progress)
         {
             {
-                var uri = new Uri($"http://www.{domainName}");
+                var uri = new Uri($"http://www.{domain.DomainName}");
 
                 try
                 { 
                     var response = await client.GetAsync(uri);
                     progress?.Report(response);
-                    return response;
+                    domain.Response = response.ReasonPhrase;
+                    return domain;
                 }
                 catch (HttpRequestException)
                 {
@@ -137,8 +167,9 @@ namespace DomainTesting
                         RequestMessage = new HttpRequestMessage(HttpMethod.Get, uri)
                     };
                     progress?.Report(response);
-                    return response;
-                } 
+                    domain.Response = response.ReasonPhrase;
+                    return domain;
+                }
                 catch (Exception)
                 {
                     var response = new HttpResponseMessage(System.Net.HttpStatusCode.InternalServerError)
@@ -147,7 +178,8 @@ namespace DomainTesting
                     };
 
                     progress?.Report(response);
-                    return response;
+                    domain.Response = response.ReasonPhrase;
+                    return domain;
                 }
             }
         } 
